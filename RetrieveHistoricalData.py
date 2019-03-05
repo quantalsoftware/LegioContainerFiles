@@ -128,8 +128,8 @@ if __name__ == '__main__':
     boto3.set_stream_logger('', logging.INFO)
     warnings.filterwarnings("ignore")
     
-    s3 = session.resource('s3')
-    #s3 = boto3.resource('s3')
+    #s3 = session.resource('s3')
+    s3 = boto3.resource('s3')
     s3bucketName = 'legio-data'
     bucket = s3.Bucket(name=s3bucketName)
     #s3_StorageLocation = "Legio/data/database_data/"
