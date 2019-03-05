@@ -75,8 +75,8 @@ def main():
         hourlyData = ibConn.historicalData[baseCode+'_CASH']
         hourlyData = hourlyData.drop(['V','OI','WAP'],1).reset_index().sort_values('datetime')
         filename = baseCode+'_H'+str((datetime.datetime.today()).strftime("%Y%m%d"))+'.parq'
-        write('/root/IBConnection/data/hour/'+filename,hourlyData)
-        bucket.upload_file('/root/IBConnection/data/hour/'+filename, s3_StorageLocation+filename)
+        write('/root/data/hour/'+filename,hourlyData)
+        bucket.upload_file('/root/data/hour/'+filename, s3_StorageLocation+filename)
         ibConn.historicalData = {}    
 
         years = [2018,2017,2016,2015,2014]
@@ -110,8 +110,8 @@ def main():
                     minuteData = ibConn.historicalData[baseCode+'_CASH']
                     minuteData = minuteData.drop(['V','OI','WAP'],1).reset_index().sort_values('datetime')
                     filename = baseCode+'_M'+str(d.strftime("%Y_%m"))+'.parq'
-                    write('/root/IBConnection/data/min/'+filename,minuteData)
-                    bucket.upload_file('/root/IBConnection/data/min/'+filename, s3_StorageLocation+"min/"+filename)
+                    write('/root/data/min/'+filename,minuteData)
+                    bucket.upload_file('/root/data/min/'+filename, s3_StorageLocation+"min/"+filename)
                     ibConn.historicalData = {}
 
 
