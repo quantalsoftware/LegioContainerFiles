@@ -127,7 +127,7 @@ if __name__ == '__main__':
     print("Initialising")
     boto3.set_stream_logger('', logging.INFO)
     warnings.filterwarnings("ignore")
-    session = boto3.Session(aws_access_key_id='AKIAJ4KLOVMVW3D3NZIQ',aws_secret_access_key='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')
+    
     s3 = session.resource('s3')
     #s3 = boto3.resource('s3')
     s3bucketName = 'legio-data'
