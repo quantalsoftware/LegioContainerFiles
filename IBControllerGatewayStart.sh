@@ -18,8 +18,8 @@ TRADING_MODE=
 IBC_PATH=/root/ibcontroller.paper
 TWS_PATH=/root/Jts
 LOG_PATH=/root/ibcontroller.paper/Logs
-TWSUSERID=quanta189
-TWSPASSWORD=Txgf6qwx11
+TWSUSERID=
+TWSPASSWORD=
 JAVA_PATH=
 
 #              PLEASE DON'T CHANGE ANYTHING BELOW THIS LINE !!
