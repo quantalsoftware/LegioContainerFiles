@@ -221,7 +221,8 @@ loggerName = 'IBTrader-'+str(datetime.now().year)+str(datetime.now().month)+str(
 createLogger(loggerName)
 
 class IBTrader():
-
+    
+    
     @staticmethod
     def roundClosestValid(val, res, decimals=None):
         """ round to closest resolution """
@@ -240,6 +241,8 @@ class IBTrader():
         self.host      = "localhost"
         self.ibConn    = None
         self.connected = False
+        
+        self.dataReqComplete = False
 
         self.time        = 0
         self.commission  = 0
@@ -839,9 +842,11 @@ class IBTrader():
     def handleHistoricalData(self, msg):
         # self.log.debug("[HISTORY]: %s", msg)
         #print('.', end="", flush=True)
+        
 
         if msg.date[:8].lower() == 'finished':
-            # print(self.historicalData)
+            self.dataReqComplete = True
+            # print(self.historicalData)            
 
             if self.utc_history:
                 for sym in self.historicalData:
@@ -862,6 +867,7 @@ class IBTrader():
 
         else:
             # create tick holder for ticker
+            self.dataReqComplete = False
             if len(msg.date) <= 8:  # daily
                 ts = datetime.strptime(msg.date, dataTypes["DATE_FORMAT"])
                 ts = ts.strftime(dataTypes["DATE_FORMAT_HISTORY"])
@@ -1843,6 +1849,7 @@ class IBTrader():
         Download to historical data
         https://www.interactivebrokers.com/en/software/api/apiguide/java/reqhistoricaldata.htm
         """
+        self.dataReqComplete = False
 
         self.csv_path = csv_path
         self.utc_history = utc

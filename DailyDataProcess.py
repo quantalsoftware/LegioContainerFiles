@@ -37,19 +37,15 @@ ibConn = IBTrader.IBTrader()
 def RequestSpecificMarketData(endtime, timeframe, lookbackSecs):
     global ibConn
     global baseCode
-    ibConn.cancelHistoricalData()
     ibConn.historicalData = {}
     
     contract = int(next(iter(ibConn.contracts)))
-        
-    ibConn.requestHistoricalData(ibConn.contracts[contract],resolution=timeframe, end_datetime='{}'.format(endtime.strftime("%Y%m%d %H:%M:%S")),lookback=str(lookbackSecs)+" S")
-
-    waiting = True
-    while waiting:    
-        if len(ibConn.historicalData) == len(ibConn.contracts):            
-            waiting = False
-        else:
-            time.sleep(0.01)
+    ibConn.requestHistoricalData(ibConn.contracts[contract],resolution=timeframe, 
+                                         end_datetime="{}".format(endtime.strftime("%Y%m%d %H:%M:%S")),
+                                         lookback=str(lookbackSecs)+" S")
+    while not ibConn.dataReqComplete:
+        print(datetime.datetime.now().strftime("%Y%m%d %H:%M:%S"), end='\r')
+        time.sleep(0.2)
     return ibConn.historicalData[baseCode+"_CASH"]
 
 def CheckDatetime(datetime):
@@ -69,7 +65,7 @@ def CheckDatetime(datetime):
         return False
 
 def StartSchedule():
-    schedule.clear('data-tasks')
+    schedule.clear('data-tasks')    
     schedule.every().day.at("21:45").do(CheckLastData).tag('data-tasks')
     schedule.every().day.at("22:00").do(ProcessMarketData).tag('data-tasks')
     schedule.every().day.at("22:45").do(CheckLastData).tag('data-tasks')
@@ -120,43 +116,81 @@ def StartSchedule():
     schedule.every().day.at("21:00").do(ProcessMarketData).tag('data-tasks')
         
 def CheckLastData():
+    global ibConn
     global baseCode
     global dbHostContainer
     global dbHostPort
     global user
     global passwd
 
+    ibConn.historicalData = {}
+
+    endtime = datetime.datetime.utcnow()
+
     database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
     dbConnection = database.cursor()
     dbConnection.execute("SELECT * FROM "+baseCode+"_Min ORDER BY Timestamp DESC LIMIT 1")
     minuteData = dbConnection.fetchall()
-    minuteRequestSecs = (datetime.datetime.now()-datetime.datetime.strptime(list(minuteData[0])[0], '%Y-%m-%d %H:%M:%S')).total_seconds()
-    if minuteRequestSecs > 3600:
-        minuteData = RequestSpecificMarketData(datetime.datetime.now(), "1 min", minuteRequestSecs)
-        minuteData['Vol'] = 0
-        for commitData in list(np.array_split(minuteData,500)):
-            vals = [tuple(x) for x in commitData.values]
-            sql = "INSERT INTO "+baseCode+"_Min (Timestamp, Open, High, Low, Close, Vol) VALUES (%s, %s, %s, %s, %s, %s)"
-            database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
-            dbConnection = database.cursor()
-            dbConnection.executemany(sql, vals)
-            database.commit()
+
+    timeframe = "1 min"
+    timeChunk = 25000
+    minDF = pd.DataFrame()
+    
+    lookbackSecs = int((endtime-datetime.datetime.strptime(list(minuteData[0])[0], '%Y-%m-%d %H:%M:%S')).total_seconds())
+
+    if lookbackSecs > 3600:
+        lastDBDate = endtime - datetime.timedelta(seconds=lookbackSecs)    
+        currentEndDate = endtime
+        for i in range(int(lookbackSecs/timeChunk)+1):
+            if (lookbackSecs - (timeChunk*i)) > timeChunk:
+                minDF = pd.concat([minDF,RequestSpecificMarketData(currentEndDate, timeframe, timeChunk)])
+            else:
+                minDF = pd.concat([minDF,RequestSpecificMarketData(currentEndDate, timeframe, int((currentEndDate - lastDBDate).total_seconds()))])                    
+            currentEndDate = currentEndDate-datetime.timedelta(seconds=timeChunk)
+        if len(minDF) > 0:
+            minDF.drop(['V','OI','WAP'],1,inplace=True)
+            minDF['Vol']=0
+            minDF = minDF.sort_values('datetime').reset_index()
+             
+            for commitData in list(np.array_split(minDF,1000)):
+                vals = [tuple(x) for x in commitData.values]
+                sql = "INSERT INTO "+baseCode+"_Min (Timestamp, Open, High, Low, Close, Vol) VALUES (%s, %s, %s, %s, %s, %s)"
+                database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
+                dbConnection = database.cursor()
+                dbConnection.executemany(sql, vals)
+                database.commit()
     
     database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
     dbConnection = database.cursor()
     dbConnection.execute("SELECT * FROM "+baseCode+"_Hour ORDER BY Timestamp DESC LIMIT 1")
     hourData = dbConnection.fetchall()
-    hourRequestSecs = (datetime.datetime.now()-datetime.datetime.strptime(list(hourData[0])[0], '%Y-%m-%d %H:%M:%S')).total_seconds()
-    if hourRequestSecs > 3600:
-        hourData = RequestSpecificMarketData(datetime.datetime.now(), "1 hour", hourRequestSecs)
-        for commitData in list(np.array_split(hourData,50)):
-            vals = [tuple(x) for x in commitData.values]
-            sql = "INSERT INTO "+baseCode+"_Hour (Timestamp, Open, High, Low, Close) VALUES (%s, %s, %s, %s, %s)"
-            database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
-            dbConnection = database.cursor()
-            dbConnection.executemany(sql, vals)
-            database.commit()
+
+    timeframe = "1 hour"    
+    hourDF = pd.DataFrame()
     
+    lookbackSecs = int((endtime-datetime.datetime.strptime(list(hourData[0])[0], '%Y-%m-%d %H:%M:%S')).total_seconds())
+
+    if lookbackSecs > 3600:
+        lastDBDate = endtime - datetime.timedelta(seconds=lookbackSecs)    
+        currentEndDate = endtime
+        for i in range(int(lookbackSecs/timeChunk)+1):
+            if (lookbackSecs - (timeChunk*i)) > timeChunk:
+                hourDF = pd.concat([hourDF,RequestSpecificMarketData(currentEndDate, timeframe, timeChunk)])
+            else:
+                hourDF = pd.concat([hourDF,RequestSpecificMarketData(currentEndDate, timeframe, int((currentEndDate - lastDBDate).total_seconds()))])                    
+            currentEndDate = currentEndDate-datetime.timedelta(seconds=timeChunk)
+        if len(hourDF) > 0:
+            hourDF.drop(['V','OI','WAP'],1,inplace=True)
+            hourDF = hourDF.sort_values('datetime').reset_index()
+            
+            for commitData in list(np.array_split(hourDF,50)):
+                vals = [tuple(x) for x in commitData.values]
+                sql = "INSERT INTO "+baseCode+"_Hour (Timestamp, Open, High, Low, Close) VALUES (%s, %s, %s, %s, %s)"
+                database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
+                dbConnection = database.cursor()
+                dbConnection.executemany(sql, vals)
+                database.commit()
+
     print("Data Checked and Updated")
 
 def ProcessMarketData():
@@ -170,47 +204,37 @@ def ProcessMarketData():
     ibConn.cancelHistoricalData()
     ibConn.historicalData = {}
     
-    startTime = datetime.datetime.now()
-    processToTime = datetime.datetime(startTime.year, startTime.month, startTime.day, startTime.hour, 0, 0)
-        
-    contract = int(next(iter(ibConn.contracts)))
-    ibConn.requestHistoricalData(ibConn.contracts[contract],resolution="1 min", end_datetime='{}'.format(processToTime.strftime("%Y%m%d %H:%M:%S")),lookback="3600 S")
-
-    waiting = True
-    while waiting:    
-        if len(ibConn.historicalData) == len(ibConn.contracts):            
-            waiting = False
-        else:
-            time.sleep(0.01)
-    minutes = ibConn.historicalData[baseCode+"_CASH"]
+    startTime = datetime.datetime.utcnow()
+    processToTime = datetime.datetime(startTime.year, startTime.month, startTime.day, startTime.hour, 0, 0)    
+    timeChunk = 3600
+    
+    timeframe = "1 min"
+    minutes = RequestSpecificMarketData(processToTime, timeframe, timeChunk)
+    minutes.drop(['V','OI','WAP'],1,inplace=True)
     minutes['Vol'] = 0
+    minutes = minutes.sort_values('datetime').reset_index()
     
-    ibConn.historicalData = {}
-    ibConn.requestHistoricalData(ibConn.contracts[contract],resolution="1 hour", end_datetime='{}'.format(processToTime.strftime("%Y%m%d %H:%M:%S")),lookback="3600 S") 
-    waiting = True
-    while waiting:    
-        if len(ibConn.historicalData) == len(ibConn.contracts):            
-            waiting = False
-        else:
-            time.sleep(0.01)
-    hours = ibConn.historicalData[baseCode+"_CASH"]   
+    timeframe = "1 hour"
+    hours = RequestSpecificMarketData(processToTime, timeframe, timeChunk)
+    hours.drop(['V','OI','WAP'],1,inplace=True)
+    hours = hours.sort_values('datetime').reset_index()
     
-    for commitData in list(np.array_split(minutes,10)):
-        vals = [tuple(x) for x in commitData.values]
-        sql = "INSERT INTO "+baseCode+"_Min (Timestamp, Open, High, Low, Close, Vol) VALUES (%s, %s, %s, %s, %s, %s)"
-        database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
-        dbConnection = database.cursor()
-        dbConnection.executemany(sql, vals)
-        database.commit()
-
-    for commitData in list(np.array_split(hours,10)):
-        vals = [tuple(x) for x in commitData.values]
-        sql = "INSERT INTO "+baseCode+"_Hour (Timestamp, Open, High, Low, Close) VALUES (%s, %s, %s, %s, %s)"
-        database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
-        dbConnection = database.cursor()
-        dbConnection.executemany(sql, vals)
-        database.commit()
-    
+    if len(minutes) > 0:   
+        for commitData in list(np.array_split(minutes,10)):
+            vals = [tuple(x) for x in commitData.values]
+            sql = "INSERT INTO "+baseCode+"_Min (Timestamp, Open, High, Low, Close, Vol) VALUES (%s, %s, %s, %s, %s, %s)"
+            database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
+            dbConnection = database.cursor()
+            dbConnection.executemany(sql, vals)
+            database.commit()
+    if len(hours) > 0:
+        for commitData in list(np.array_split(hours,10)):
+            vals = [tuple(x) for x in commitData.values]
+            sql = "INSERT INTO "+baseCode+"_Hour (Timestamp, Open, High, Low, Close) VALUES (%s, %s, %s, %s, %s)"
+            database = mysql.connect(host=dbHostContainer,port=dbHostPort,user=user,passwd=passwd,database=baseCode)
+            dbConnection = database.cursor()
+            dbConnection.executemany(sql, vals)
+            database.commit()
     #return [hours,minutes]
 
 def main():
