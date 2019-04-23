@@ -946,10 +946,10 @@ if __name__ == '__main__':
     #os.makedirs('/logs/', exist_ok=False)
 
     print("Retrieving Market Symbol Code")
-    #baseConfigInfo = pd.read_csv("./BaseConfigInfo.csv")
-    baseConfigInfo = pd.read_csv("/general/legiotrader/DockerFiles/docker_env/LegioContainerFiles/BaseConfigInfo.csv")
-    #containerIP = socket.gethostbyname(socket.gethostname())
-    containerIP = "172.50.0.57"
+    baseConfigInfo = pd.read_csv("./BaseConfigInfo.csv")
+    #baseConfigInfo = pd.read_csv("/general/legiotrader/DockerFiles/docker_env/LegioContainerFiles/BaseConfigInfo.csv")
+    containerIP = socket.gethostbyname(socket.gethostname())
+    #containerIP = "172.50.0.57"
     
     thisContainer = baseConfigInfo.loc[baseConfigInfo['IPAddress']==containerIP]
     baseCode = thisContainer['Symbol'].item()
@@ -959,8 +959,8 @@ if __name__ == '__main__':
     modelParamsPath = thisContainer['ParamsPath'].item()
     approvedPositionSize = thisContainer['Position'].item()
 
-    #host = thisContainer['IBGatewayIP'].item()
+    host = thisContainer['IBGatewayIP'].item()
     #host = "10.1.1.194"
-    host = "ec2-54-252-236-54.ap-southeast-2.compute.amazonaws.com"
+    #host = "ec2-54-252-236-54.ap-southeast-2.compute.amazonaws.com"
 
     main()
