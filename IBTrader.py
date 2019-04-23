@@ -730,6 +730,7 @@ class IBTrader():
         It is possible that orderStatus() may return duplicate messages.
         It is essential that you filter the message accordingly.
         """
+        print(msg)
 
         # log handler msg
         self.log_msg("order", msg)
